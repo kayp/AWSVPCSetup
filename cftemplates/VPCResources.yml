@@ -1,0 +1,287 @@
+---
+Description:  Reverie Challenge-
+  Create VPC1 Private Subnet 
+  Create VPC2 Private/Public Subnet
+  Default AWS VPC was retained
+  Creates S3 Bucket, EC2 instances, IAM roles
+Parameters:
+  AWSDefaultVPC:      
+    Description: Default AWS VPC
+    Type: String
+    Default: 'vpc-43b08839'
+  AWSDefaultRouteTable:
+    Description: Default AWS Route Table
+    Type: String
+    Default: 'rtb-df7dfaa1'
+  AWSDefaultSubnet:
+    Description: Default AWS VPC's subnet
+    Type: String
+    Default: 'subnet-57c72d76'
+  AMIId:  
+    Description: AMI ID being used
+    Type: String
+    Default: 'ami-0fc61db8544a617ed'
+  EC2KeyPair:  
+    Description: EC2 KeyPair for SSH access.
+      This should not be needed beyond development purpose
+    Type: String
+    Default: 'revtest'
+  S3BucketName:  
+    Description: S3 Bucket to be created.
+    Type: String
+    Default: 'revlabs-challenge1'
+Resources:
+  VPC1:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: 'default'
+      Tags:
+        - Key: Name
+          Value: VPC1
+        - Key: Subnet_Type
+          Value: Private
+  VPC2:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.2.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: 'default'
+      Tags:
+        - Key: Name
+          Value: VPC2
+        - Key: Subnet_Type
+          Value: Public
+
+  VPC1Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC1
+      CidrBlock: 10.1.0.0/24
+      Tags:
+        - Key: Name
+          Value: PrivateSubnetVPC1
+        - Key: Application
+          Value: ApacheWebserver
+
+  VPC2Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC2
+      CidrBlock: 10.2.0.0/24
+      Tags:
+        - Key: Name
+          Value: PublicSubnetVPC2
+        - Key: Application
+          Value: HealthCheck
+
+  SecurityGroupVPC1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Security Group for VPC1
+        VpcId: !Ref VPC1
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: 0.0.0.0/0
+        Tags:
+          - Key: Name
+            Value: SG_VPC1
+          - Key: Applications
+            Value: WebServer
+    
+  SecurityGroupVPC2:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Security Group for VPC2
+        VpcId: !Ref VPC1
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+        Tags:
+          - Key: Name
+            Value: SG_VPC2
+          - Key: Applications
+            Value: WebServerProbe
+  SecurityGroupSSHDeveloper:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Security Group for VPC2
+        VpcId: !Ref AWSDefaultVPC
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 22 
+            ToPort: 22 
+            CidrIp: 0.0.0.0/0
+        Tags:
+          - Key: Name
+            Value: SG_Developer
+          - Key: Applications
+            Value: Developer SSH
+
+  ## Create Apache Webserver EC2 
+  ApacheInstance: 
+   Type: AWS::EC2::Instance
+   Properties: 
+     ImageId: !Ref AMIId
+     KeyName: !Ref EC2KeyPair
+     InstanceType: 't2.micro'
+     NetworkInterfaces: 
+       - AssociatePublicIpAddress: "true"
+         DeviceIndex: "0"
+         GroupSet: [!Ref SecurityGroupVPC1]
+         SubnetId: !Ref VPC1Subnet1
+     Tags:
+       - Key: Name
+         Value: ApacheServer
+       - Key: Applications
+         Value: WebserverVPC1
+     UserData: 
+       Fn::Base64:
+         !Sub |
+           #!/bin/bash -xe
+           echo "Starting bootstrap">/var/log/bootstrap.rev.log
+           yum update -y
+           yum install -y httpd
+           echo "Hello World" >  /var/www/html/index.html
+           sudo service httpd start
+           echo "Ending bootstrap">>/var/log/bootstrap.rev.log
+
+  ## Create Monitoring EC2
+  PingInstance2: 
+   Type: AWS::EC2::Instance
+   Properties: 
+     ImageId: !Ref AMIId
+     KeyName: !Ref EC2KeyPair
+     InstanceType: 't2.micro'
+     IamInstanceProfile: !Ref EC2PingInstanceProfile 
+     NetworkInterfaces: 
+       - AssociatePublicIpAddress: "true"
+         DeviceIndex: "0"
+         GroupSet: [!Ref SecurityGroupSSHDeveloper]
+         SubnetId: !Ref 'AWSDefaultSubnet'
+     Tags:
+       - Key: Name
+         Value: Ping
+       - Key: Applications
+         Value: HealthCheck
+     UserData: 
+       Fn::Base64: !Join ["",[
+             "#!/bin/bash -xe\n", 
+             "echo 'Starting bootstrap'>/var/log/bootstrap.rev.log\n",
+             "yum -y install awslogs\n",
+             "echo '*/5 * * * * curl ", !GetAtt ApacheInstance.PrivateDnsName," >>/var/log/webserver_health.log",  "' > /tmp/mycrontab\n",
+             "crontab /tmp/mycrontab\n",
+             "systemctl start awslogsd\n",
+             "echo 'Ending bootstrap'>>/var/log/bootstrap.rev.log\n"]]
+             
+  ## S3 Bucket           
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+
+  IAMS3ConfigPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: S3EC2MinimalAccess
+      Roles: [!Ref EC2PingRole]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 's3:GetObject'
+              - 's3:GetObjectTagging'
+              - 's3:GetObjectVersionTagging'
+              - 's3:PutObject'
+              - 's3:PutObjectTagging'
+              - 's3:PutObjectVersionTagging'
+            Resource:  !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
+            Effect: Allow
+            Sid: ReadWriteToS3 
+          - Action:
+              - 's3:ListBucket'
+            Resource: !GetAtt S3Bucket.Arn
+            Effect: Allow
+            Sid: ListS3
+  IAMCWPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EC2CloudWatchAccess
+      Roles: [!Ref EC2PingRole]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: WriteToLogStreams
+            Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: "*"
+
+  ## EC2  IAM Instance Profile
+  EC2PingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: EC2PingRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+  EC2PingInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - !Ref EC2PingRole
+      InstanceProfileName: EC2PingProfile
+  VPCPeeringConnection:
+    Type: 'AWS::EC2::VPCPeeringConnection'
+    Properties:
+      VpcId: !Ref AWSDefaultVPC
+      PeerVpcId: !Ref VPC1
+      
+  PeeringRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 10.1.0.0/16
+      RouteTableId: !Ref AWSDefaultRouteTable
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+      
+Outputs:
+  IAMRoleCreated:
+    Description: The EC2 instance role created
+    Value: !Ref EC2PingRole
+  IAMProfileCreated:
+    Description: The EC2 instance profile created
+    Value: !Ref EC2PingInstanceProfile
+  PingEC2PublicIPAddress:
+    Description: The IP EC2 instance role created
+    Value: !GetAtt PingInstance2.PublicIp
+  ApacheEC2PrivateIPAddress:
+    Description: The IP EC2 instance role created
+    Value: !GetAtt ApacheInstance.PublicIp
+          
+   
+
