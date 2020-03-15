@@ -2,7 +2,7 @@
 
 <b>Project Requirements</b>: <p> Create an account with multiple VPC's. Write an IaaS template (AWS Cloudformation chosen here). Create Private and Public Subnets and demonstrate VPC Peering by querying an apache webserver across VPC's. Suggested time for completion 4 hours</p>
 
-<b>Approach</b>:1
+<b>Approach</b>:
   1. AWS Cloudformation was used, a new account was setup using Organization Units.
   2. Admin and Auditor roles were created. Auditor roles
   3. 2 VPC's (VPC1 and VPC2) were created.
