@@ -4,12 +4,12 @@
 
 <b>Approach</b>:1
   1. AWS Cloudformation was used, a new account was setup using Organization Units.
-  2. Admin and Auditor roles were created. Auditor roles
+  2. Admin and Auditor roles were created. Auditor roles are READ only.
   3. 2 VPC's (VPC1 and VPC2) were created.
-  4. Subnet's were created. A privete Subnet in VPC1.
-  5. For public subnet the default AWS VPC was used to save time. The default VPC already has route tables and internet gateway setup.
+  4. 2 Subnet's were created in VPC1. A privete Subnet  and a Public Subnet in VPC1.
+  5. A Public Subnet was created in VPC2.
   6. VPC peering was performed by creating a VPC peering resource and editing the route tables.
-  7. Two ec2 instances were created, one performing the function of a webserver displaying a simple  "Hello World" message ina  private subnet.
+  7. Two ec2 instances were created, one performing the function of a webserver displaying a simple  "Hello World" message in a  private subnet.
   8. The second EC2 instance (referred as  Ping or Healthcheck EC2) executes a simple curl command as part cron job and write the result to cloudwatch logs.
   9. EC2 instances were created as part of the the cloudformation template. A Userdata script bootstraps the application.
   10. The webserver EC2 has no IAM role while the HealthCheck EC2 ahs permissions to read and write to S3 and Cloudwatch logs.

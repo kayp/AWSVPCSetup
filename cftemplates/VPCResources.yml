@@ -29,8 +29,9 @@ Parameters:
   S3BucketName:  
     Description: S3 Bucket to be created.
     Type: String
-    Default: 'revlabs-challenge1'
+    Default: 'projectssamples'
 Resources:
+  ## Create VPC's      
   VPC1:
     Type: AWS::EC2::VPC
     Properties:
@@ -41,8 +42,8 @@ Resources:
       Tags:
         - Key: Name
           Value: VPC1
-        - Key: Subnet_Type
-          Value: Private
+        - Key: AppHosts
+          Value: Apache
   VPC2:
     Type: AWS::EC2::VPC
     Properties:
@@ -53,8 +54,8 @@ Resources:
       Tags:
         - Key: Name
           Value: VPC2
-        - Key: Subnet_Type
-          Value: Public
+        - Key: AppHosts
+          Value: Ping
 
   VPC1Subnet1:
     Type: AWS::EC2::Subnet
@@ -66,7 +67,22 @@ Resources:
           Value: PrivateSubnetVPC1
         - Key: Application
           Value: ApacheWebserver
+        - Key: SubnetType
+          Value: Private
 
+  VPC1Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC1
+      CidrBlock: 10.1.1.0/24
+      Tags:
+        - Key: Name
+          Value: PublicSubnetVPC1
+        - Key: Application
+          Value: ApacheWebNATGateway
+        - Key: SubnetType
+          Value: Public
+       
   VPC2Subnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -77,6 +93,163 @@ Resources:
           Value: PublicSubnetVPC2
         - Key: Application
           Value: HealthCheck
+        - Key: SubnetType
+          Value: Public
+
+  ## Internet Gateway for Subnet VPC1Subnet2          
+  InternetGatewayVPC1Subnet2:          
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags: 
+        - Key: Name
+          Value: IGWVPC1Subnet2
+        - Key: Application
+          Value: ApacheWebNATGateway
+        - Key: Association
+          Value: VPC1Subnet2
+  ## Internet Gateway for Subnet VPC2Subnet1          
+  InternetGatewayVPC2Subnet1:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags: 
+        - Key: Name
+          Value: IGWVPC2Subnet1
+        - Key: Application
+          Value: ApacheWebNATGateway
+        - Key: Association
+          Value: VPC2Subnet1
+  ## Internet Gateway attachments
+  AttachGatewayIGW1VPC1:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC1
+      InternetGatewayId: !Ref InternetGatewayVPC1Subnet2 
+
+  AttachGatewayIGW2VPC2:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC2
+      InternetGatewayId: !Ref InternetGatewayVPC2Subnet1
+
+  ## NAT Gatweways
+  NATGatewayVPC1Subnet2:
+   Type: AWS::EC2::NatGateway
+   Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref VPC1Subnet2
+      Tags: 
+        - Key: Name
+          Value: NatGatewayVPC1
+        - Key: Application
+          Value: Apache
+        - Key: Association
+          Value: VPC1Subnet2
+
+  ## Nat Gateway EIP       
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc 
+  ## Route Tables
+  RouteTableVPC1Subnet1:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC1
+      Tags: 
+        - Key: Name
+          Value: RouteTableVPC1Subnet1
+        - Key: Application
+          Value: Apache
+        - Key: Association
+          Value: VPC1Subnet1
+  RouteTableVPC1Subnet2:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC1
+      Tags: 
+        - Key: Name
+          Value: RouteTableVPC1Subnet2
+        - Key: Application
+          Value: Apache
+        - Key: Association
+          Value: VPC1Subnet2
+  RouteTableVPC2Subnet1:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC2
+      Tags: 
+        - Key: Name
+          Value: RouteTableVPC2
+        - Key: Application
+          Value: Apache
+        - Key: Association
+          Value: VPC2Subnet1
+  ## Routes
+  RouteTableVPC1Subnet2Rte1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableVPC1Subnet2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGatewayVPC1Subnet2
+
+  RouteTableVPC1Subnet1Rte1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableVPC1Subnet1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayVPC1Subnet2
+
+  RouteTableVPC2Subnet1Rte1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableVPC2Subnet1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGatewayVPC2Subnet1
+
+  VPC1Subnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref VPC1Subnet1
+      RouteTableId: !Ref RouteTableVPC1Subnet1
+
+  VPC1Subnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref VPC1Subnet2
+      RouteTableId: !Ref RouteTableVPC1Subnet2
+
+  VPC2Subnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref VPC2Subnet1
+      RouteTableId: !Ref RouteTableVPC2Subnet1
+
+
+  VPCPeeringConnection1:
+    Type: 'AWS::EC2::VPCPeeringConnection'
+    Properties:
+      VpcId: !Ref VPC1
+      PeerVpcId: !Ref VPC2
+
+# VPCPeeringConnection2:
+#   Type: 'AWS::EC2::VPCPeeringConnection'
+#   Properties:
+#     VpcId: !Ref VPC2
+#     PeerVpcId: !Ref VPC1
+
+  PeeringRouteVPC1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref RouteTableVPC2Subnet1
+      DestinationCidrBlock: 10.1.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection1
+
+  PeeringRouteVPC2:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref RouteTableVPC1Subnet1
+      DestinationCidrBlock: 10.2.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection1
 
   SecurityGroupVPC1:
     Type: AWS::EC2::SecurityGroup
@@ -102,7 +275,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
         GroupDescription: Security Group for VPC2
-        VpcId: !Ref VPC1
+        VpcId: !Ref VPC2
         SecurityGroupIngress:
           - IpProtocol: tcp
             FromPort: 80
@@ -117,7 +290,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
         GroupDescription: Security Group for VPC2
-        VpcId: !Ref AWSDefaultVPC
+        VpcId: !Ref VPC2
         SecurityGroupIngress:
           - IpProtocol: tcp
             FromPort: 80
@@ -173,7 +346,7 @@ Resources:
        - AssociatePublicIpAddress: "true"
          DeviceIndex: "0"
          GroupSet: [!Ref SecurityGroupSSHDeveloper]
-         SubnetId: !Ref 'AWSDefaultSubnet'
+         SubnetId: !Ref 'VPC2Subnet1'
      Tags:
        - Key: Name
          Value: Ping
@@ -256,18 +429,6 @@ Resources:
       Roles:
       - !Ref EC2PingRole
       InstanceProfileName: EC2PingProfile
-  VPCPeeringConnection:
-    Type: 'AWS::EC2::VPCPeeringConnection'
-    Properties:
-      VpcId: !Ref AWSDefaultVPC
-      PeerVpcId: !Ref VPC1
-      
-  PeeringRoute:
-    Type: 'AWS::EC2::Route'
-    Properties:
-      DestinationCidrBlock: 10.1.0.0/16
-      RouteTableId: !Ref AWSDefaultRouteTable
-      VpcPeeringConnectionId: !Ref VPCPeeringConnection
       
 Outputs:
   IAMRoleCreated:
