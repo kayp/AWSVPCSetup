@@ -1,22 +1,9 @@
 ---
-Description:  Reverie Challenge-
+Description:  S simple VPC Demo-
   Create VPC1 Private Subnet 
   Create VPC2 Private/Public Subnet
-  Default AWS VPC was retained
   Creates S3 Bucket, EC2 instances, IAM roles
 Parameters:
-  AWSDefaultVPC:      
-    Description: Default AWS VPC
-    Type: String
-    Default: 'vpc-43b08839'
-  AWSDefaultRouteTable:
-    Description: Default AWS Route Table
-    Type: String
-    Default: 'rtb-df7dfaa1'
-  AWSDefaultSubnet:
-    Description: Default AWS VPC's subnet
-    Type: String
-    Default: 'subnet-57c72d76'
   AMIId:  
     Description: AMI ID being used
     Type: String
@@ -230,12 +217,6 @@ Resources:
     Properties:
       VpcId: !Ref VPC1
       PeerVpcId: !Ref VPC2
-
-# VPCPeeringConnection2:
-#   Type: 'AWS::EC2::VPCPeeringConnection'
-#   Properties:
-#     VpcId: !Ref VPC2
-#     PeerVpcId: !Ref VPC1
 
   PeeringRouteVPC1:
     Type: 'AWS::EC2::Route'
